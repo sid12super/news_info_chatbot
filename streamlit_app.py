@@ -37,12 +37,9 @@ def setup_vector_db(df, force_rebuild=False):
 
     st.sidebar.warning("Building Vector DB from the CSV. Please wait...")
     with st.spinner("Processing rows, chunking, and creating embeddings..."):
-        # --- MODIFIED SECTION START ---
-        # 1. Check for the correct 'Document' column instead of 'Headline' and 'Summary'.
         if 'Document' not in df.columns:
             st.error("CSV must contain a 'Document' column.")
             st.stop()
-        # --- MODIFIED SECTION END ---
 
         openai_client = st.session_state.openai_client
         
@@ -61,16 +58,13 @@ def setup_vector_db(df, force_rebuild=False):
         all_ids = []
 
         for index, row in df.iterrows():
-            # --- MODIFIED SECTION START ---
-            # 2. Parse the 'Document' column to extract headline and summary.
             doc_full_text = row['Document']
             parts = str(doc_full_text).split(' Description: ', 1)
             
             headline = parts[0]
-            summary = parts[1] if len(parts) > 1 else "No summary provided." # Handle cases with no description
+            summary = parts[1] if len(parts) > 1 else "No summary provided."
 
             doc_text = f"Headline: {headline}\n\nSummary: {summary}"
-            # --- MODIFIED SECTION END ---
 
             chunks = text_splitter.split_text(doc_text)
             for i, chunk in enumerate(chunks):
@@ -94,7 +88,6 @@ def setup_vector_db(df, force_rebuild=False):
     
     st.sidebar.success(f"Vector DB built successfully with {collection.count()} document chunks.", icon="✅")
 
-# (The rest of the functions: query_vector_db, get_llm_response, and main are unchanged)
 def query_vector_db(prompt, n_results=4):
     """Queries the vector database to find relevant document chunks for the user's prompt."""
     try:
@@ -206,7 +199,20 @@ def main():
             response_content = ""
             if "most interesting news" in prompt.lower():
                 system_prompt = "You are a senior legal analyst at a top global law firm. Your task is to identify and rank the most commercially and legally significant news stories from the provided list for our firm's practice areas (e.g., M&A, Litigation, Regulatory, IP)."
-                all_news_content = "\n\n".join([f"Headline: {row['Headline']}\nSummary: {row['Summary']}" for _, row in st.session_state.news_df.iterrows()])
+                
+                # --- MODIFIED SECTION START ---
+                # This logic now correctly parses the 'Document' column instead of looking for 'Headline' and 'Summary'.
+                all_news_items = []
+                for _, row in st.session_state.news_df.iterrows():
+                    doc_full_text = row['Document']
+                    parts = str(doc_full_text).split(' Description: ', 1)
+                    headline = parts[0]
+                    summary = parts[1] if len(parts) > 1 else "No summary provided."
+                    all_news_items.append(f"Headline: {headline}\nSummary: {summary}")
+                
+                all_news_content = "\n\n".join(all_news_items)
+                # --- MODIFIED SECTION END ---
+
                 final_prompt = f"Review all the following news articles and provide a ranked analysis of the top 3 most important stories, explaining your reasoning for each.\n\nARTICLES:\n{all_news_content}"
                 response_content = get_llm_response(selected_llm, selected_model, final_prompt, system_prompt)
             else:
