@@ -164,7 +164,7 @@ def main():
 
     selected_llm = st.sidebar.selectbox("Choose an LLM Provider:", ("OpenAI", "Google", "Anthropic"))
     model_mapping = {
-        "OpenAI": "gpt-4o-mini", "Google": "gemini-1.5-flash-latest", "Anthropic": "claude-3-haiku-20240307"
+        "OpenAI": "gpt-5-nano", "Google": "gemini-2.5-flash", "Anthropic": "claude-sonnet-4-5-20250929"
     }
     selected_model = model_mapping[selected_llm]
     st.sidebar.markdown(f"**Selected Model:** `{selected_model}`")
