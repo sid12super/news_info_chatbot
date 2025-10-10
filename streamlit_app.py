@@ -4,9 +4,9 @@ import google.generativeai as genai
 from anthropic import Anthropic
 import pandas as pd
 import sys
+import os
 
 # --- Fix for working with ChromaDB and Streamlit ---
-# This is a workaround for a known issue with ChromaDB and Streamlit's environment.
 __import__('pysqlite3')
 sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
@@ -16,12 +16,13 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 # --- Global Constants & Paths ---
 CHROMA_DB_PATH = "./ChromaDB_News"
 CHROMA_COLLECTION_NAME = "LegalNewsCollection"
+NEWS_CSV_FILE = "Example_news_info_for_testing.csv" # Define the local file path
 
 # Initialize ChromaDB client. It's persistent, so it saves to disk.
 chroma_client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
 collection = chroma_client.get_or_create_collection(name=CHROMA_COLLECTION_NAME)
 
-# --- Helper Functions ---
+# --- Helper Functions (No changes from previous version) ---
 
 def setup_vector_db(df, force_rebuild=False):
     """
@@ -40,7 +41,6 @@ def setup_vector_db(df, force_rebuild=False):
 
         openai_client = st.session_state.openai_client
         
-        # Clear existing collection if rebuilding
         if force_rebuild:
             chroma_client.delete_collection(name=CHROMA_COLLECTION_NAME)
             global collection
@@ -61,7 +61,6 @@ def setup_vector_db(df, force_rebuild=False):
                 all_chunks.append(chunk)
                 all_ids.append(chunk_id)
 
-        # Embed and add to ChromaDB in batches for efficiency
         batch_size = 100 
         for i in range(0, len(all_chunks), batch_size):
             batch_chunks = all_chunks[i:i+batch_size]
@@ -103,7 +102,6 @@ def get_llm_response(llm_provider, model_name, final_prompt, system_prompt):
                 return response.choices[0].message.content
             elif llm_provider == "Google":
                 client = st.session_state.gemini_client
-                # Re-initialize the model with the specific version string
                 model = genai.GenerativeModel(model_name)
                 full_prompt_for_gemini = system_prompt + "\n" + final_prompt
                 response = model.generate_content(full_prompt_for_gemini)
@@ -119,7 +117,7 @@ def get_llm_response(llm_provider, model_name, final_prompt, system_prompt):
 def main():
     st.set_page_config(page_title="Legal News Analyst Bot", page_icon="⚖️")
     st.title("⚖️ Multi-LLM Legal News Analyst Bot")
-    st.write("Upload a news CSV to ask questions relevant to a global law firm.")
+    st.write(f"Analyzing news from **`{NEWS_CSV_FILE}`**. Ask questions relevant to a global law firm.")
 
     # --- Sidebar Setup ---
     st.sidebar.header("Settings")
@@ -128,7 +126,6 @@ def main():
             st.session_state.openai_client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
         if 'gemini_client' not in st.session_state:
             genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-            # The client is just the configured module, model is selected later
             st.session_state.gemini_client = genai 
         if 'anthropic_client' not in st.session_state:
             st.session_state.anthropic_client = Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
@@ -138,7 +135,6 @@ def main():
 
     selected_llm = st.sidebar.selectbox("Choose an LLM Provider:", ("OpenAI", "Google", "Anthropic"))
 
-    # NOTE: Model names are updated to real, available models for practical use.
     model_mapping = {
         "OpenAI": "gpt-4o-mini",
         "Google": "gemini-1.5-flash-latest",
@@ -146,11 +142,6 @@ def main():
     }
     selected_model = model_mapping[selected_llm]
     st.sidebar.markdown(f"**Selected Model:** `{selected_model}`")
-    
-    st.sidebar.markdown("---")
-    uploaded_file = st.sidebar.file_uploader(
-        "Upload your news CSV file", type=("csv"), help="CSV must have 'Headline' and 'Summary' columns."
-    )
     
     st.sidebar.markdown("---")
     st.sidebar.header("Management")
@@ -163,19 +154,26 @@ def main():
             setup_vector_db(st.session_state.news_df, force_rebuild=True)
             st.rerun()
         else:
-            st.sidebar.warning("Please upload a CSV file first.")
+            st.sidebar.warning(f"Could not find {NEWS_CSV_FILE} to rebuild the database.")
 
     # --- Main Chat Logic ---
     if "messages" not in st.session_state:
         st.session_state.messages = []
     
-    if uploaded_file:
-        if 'news_df' not in st.session_state or st.session_state.uploaded_filename != uploaded_file.name:
-            st.session_state.news_df = pd.read_csv(uploaded_file)
-            st.session_state.uploaded_filename = uploaded_file.name
-            # Automatically build DB on new file upload
+    # **MODIFIED SECTION**: Load file directly instead of using a file uploader
+    data_loaded = False
+    if 'news_df' not in st.session_state:
+        try:
+            st.session_state.news_df = pd.read_csv(NEWS_CSV_FILE)
             setup_vector_db(st.session_state.news_df, force_rebuild=True)
-
+            data_loaded = True
+        except FileNotFoundError:
+            st.error(f"Error: The file `{NEWS_CSV_FILE}` was not found in the same directory as the app.")
+            st.stop()
+    else:
+        data_loaded = True
+        
+    if data_loaded:
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
@@ -207,8 +205,6 @@ def main():
             st.session_state.messages.append({"role": "assistant", "content": full_response})
             with st.chat_message("assistant"):
                 st.markdown(full_response)
-    else:
-        st.info("Please upload a news CSV file in the sidebar to begin the analysis.")
 
 if __name__ == "__main__":
     main()
