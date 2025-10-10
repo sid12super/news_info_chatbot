@@ -16,9 +16,9 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 # --- Global Constants & Paths ---
 CHROMA_DB_PATH = "./ChromaDB_News"
 CHROMA_COLLECTION_NAME = "LegalNewsCollection"
-NEWS_CSV_FILE = "Example_news_info_for_testing.csv" # Define the local file path
+NEWS_CSV_FILE = "Example_news_info_for_testing.csv" 
 
-# Initialize ChromaDB client. It's persistent, so it saves to disk.
+# Initialize ChromaDB client.
 chroma_client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
 collection = chroma_client.get_or_create_collection(name=CHROMA_COLLECTION_NAME)
 
@@ -29,7 +29,6 @@ def setup_vector_db(df, force_rebuild=False):
     Creates the Vector DB from a DataFrame if it's empty or a rebuild is forced.
     It processes CSV rows, chunks them, and embeds each chunk using OpenAI.
     """
-    # CORRECTED: 'global' declaration is now at the top of the function
     global collection
 
     if collection.count() > 0 and not force_rebuild:
@@ -38,18 +37,19 @@ def setup_vector_db(df, force_rebuild=False):
 
     st.sidebar.warning("Building Vector DB from the CSV. Please wait...")
     with st.spinner("Processing rows, chunking, and creating embeddings..."):
-        if 'Headline' not in df.columns or 'Summary' not in df.columns:
-            st.error("CSV must contain 'Headline' and 'Summary' columns.")
+        # --- MODIFIED SECTION START ---
+        # 1. Check for the correct 'Document' column instead of 'Headline' and 'Summary'.
+        if 'Document' not in df.columns:
+            st.error("CSV must contain a 'Document' column.")
             st.stop()
+        # --- MODIFIED SECTION END ---
 
         openai_client = st.session_state.openai_client
         
         if force_rebuild:
             try:
-                # Added a try-except block for robustness
                 chroma_client.delete_collection(name=CHROMA_COLLECTION_NAME)
             except Exception as e:
-                # This can happen if the collection didn't exist, which is fine.
                 print(f"Info: Could not delete collection (it might not have existed): {e}")
             collection = chroma_client.get_or_create_collection(name=CHROMA_COLLECTION_NAME)
 
@@ -61,7 +61,17 @@ def setup_vector_db(df, force_rebuild=False):
         all_ids = []
 
         for index, row in df.iterrows():
-            doc_text = f"Headline: {row['Headline']}\n\nSummary: {row['Summary']}"
+            # --- MODIFIED SECTION START ---
+            # 2. Parse the 'Document' column to extract headline and summary.
+            doc_full_text = row['Document']
+            parts = str(doc_full_text).split(' Description: ', 1)
+            
+            headline = parts[0]
+            summary = parts[1] if len(parts) > 1 else "No summary provided." # Handle cases with no description
+
+            doc_text = f"Headline: {headline}\n\nSummary: {summary}"
+            # --- MODIFIED SECTION END ---
+
             chunks = text_splitter.split_text(doc_text)
             for i, chunk in enumerate(chunks):
                 chunk_id = f"row_{index}_chunk_{i+1}"
@@ -84,7 +94,7 @@ def setup_vector_db(df, force_rebuild=False):
     
     st.sidebar.success(f"Vector DB built successfully with {collection.count()} document chunks.", icon="✅")
 
-
+# (The rest of the functions: query_vector_db, get_llm_response, and main are unchanged)
 def query_vector_db(prompt, n_results=4):
     """Queries the vector database to find relevant document chunks for the user's prompt."""
     try:
@@ -171,7 +181,6 @@ def main():
     if 'db_initialized' not in st.session_state:
         try:
             st.session_state.news_df = pd.read_csv(NEWS_CSV_FILE)
-            # Build DB on first load and set a flag
             setup_vector_db(st.session_state.news_df, force_rebuild=True)
             st.session_state.db_initialized = True
             data_loaded = True
