@@ -1,2 +1,7 @@
 streamlit
 openai
+google-generativeai
+anthropic
+langchain
+chromadb
+pysqlite3-binary
