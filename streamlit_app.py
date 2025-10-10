@@ -87,7 +87,7 @@ def get_llm_response(llm_provider, model_name, final_prompt, system_prompt):
         with st.spinner(f"Asking {model_name}..."):
             if llm_provider == "OpenAI":
                 client = st.session_state.openai_client
-                response = client.chat.completions.create(model=model_name, messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": final_prompt}], max_tokens=2048)
+                response = client.chat.completions.create(model=model_name, messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": final_prompt}], max_completion_tokens=2048)
                 return response.choices[0].message.content
             elif llm_provider == "Google":
                 client = st.session_state.gemini_client
