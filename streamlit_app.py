@@ -22,13 +22,16 @@ NEWS_CSV_FILE = "Example_news_info_for_testing.csv" # Define the local file path
 chroma_client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
 collection = chroma_client.get_or_create_collection(name=CHROMA_COLLECTION_NAME)
 
-# --- Helper Functions (No changes from previous version) ---
+# --- Helper Functions ---
 
 def setup_vector_db(df, force_rebuild=False):
     """
     Creates the Vector DB from a DataFrame if it's empty or a rebuild is forced.
     It processes CSV rows, chunks them, and embeds each chunk using OpenAI.
     """
+    # CORRECTED: 'global' declaration is now at the top of the function
+    global collection
+
     if collection.count() > 0 and not force_rebuild:
         st.sidebar.info(f"Vector DB already contains {collection.count()} document chunks.")
         return
@@ -42,8 +45,12 @@ def setup_vector_db(df, force_rebuild=False):
         openai_client = st.session_state.openai_client
         
         if force_rebuild:
-            chroma_client.delete_collection(name=CHROMA_COLLECTION_NAME)
-            global collection
+            try:
+                # Added a try-except block for robustness
+                chroma_client.delete_collection(name=CHROMA_COLLECTION_NAME)
+            except Exception as e:
+                # This can happen if the collection didn't exist, which is fine.
+                print(f"Info: Could not delete collection (it might not have existed): {e}")
             collection = chroma_client.get_or_create_collection(name=CHROMA_COLLECTION_NAME)
 
         text_splitter = RecursiveCharacterTextSplitter(
@@ -160,12 +167,13 @@ def main():
     if "messages" not in st.session_state:
         st.session_state.messages = []
     
-    # **MODIFIED SECTION**: Load file directly instead of using a file uploader
     data_loaded = False
-    if 'news_df' not in st.session_state:
+    if 'db_initialized' not in st.session_state:
         try:
             st.session_state.news_df = pd.read_csv(NEWS_CSV_FILE)
+            # Build DB on first load and set a flag
             setup_vector_db(st.session_state.news_df, force_rebuild=True)
+            st.session_state.db_initialized = True
             data_loaded = True
         except FileNotFoundError:
             st.error(f"Error: The file `{NEWS_CSV_FILE}` was not found in the same directory as the app.")
@@ -187,14 +195,11 @@ def main():
             history_str = "\n".join([f"{msg['role']}: {msg['content']}" for msg in chat_history])
             
             response_content = ""
-            # --- Special Command: "most interesting news" ---
             if "most interesting news" in prompt.lower():
                 system_prompt = "You are a senior legal analyst at a top global law firm. Your task is to identify and rank the most commercially and legally significant news stories from the provided list for our firm's practice areas (e.g., M&A, Litigation, Regulatory, IP)."
                 all_news_content = "\n\n".join([f"Headline: {row['Headline']}\nSummary: {row['Summary']}" for _, row in st.session_state.news_df.iterrows()])
                 final_prompt = f"Review all the following news articles and provide a ranked analysis of the top 3 most important stories, explaining your reasoning for each.\n\nARTICLES:\n{all_news_content}"
                 response_content = get_llm_response(selected_llm, selected_model, final_prompt, system_prompt)
-            
-            # --- Standard RAG Query ---
             else:
                 system_prompt = "You are a precise legal news analyst. Answer the user's question based *only* on the provided context from the news documents and the conversation history. If the answer isn't in the provided materials, state that clearly."
                 context = query_vector_db(prompt)
