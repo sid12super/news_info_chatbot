@@ -9,7 +9,7 @@ import tiktoken
 
 # --- Fix for working with ChromaDB and Streamlit ---
 __import__('pysqlite3')
-sys.modules['sqlite3'] = sys.modules.pop('p_ysqlite3')
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 import chromadb
 from langchain.text_splitter import RecursiveCharacterTextSplitter
